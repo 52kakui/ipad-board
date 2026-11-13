@@ -1,0 +1,8 @@
+{
+  "name": "温馨提示 · 作业闹钟看板",
+  "short_name": "作业闹钟看板",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#dff4fc",
+  "theme_color": "#dff4fc"
+}
