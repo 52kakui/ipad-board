@@ -1,8 +1,25 @@
 {
   "name": "温馨提示 · 作业闹钟看板",
   "short_name": "作业闹钟看板",
-  "start_url": "./index.html",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "landscape",
   "background_color": "#dff4fc",
-  "theme_color": "#dff4fc"
+  "theme_color": "#dff4fc",
+  "icons": [
+    {
+      "src": "./assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }
