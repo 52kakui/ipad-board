@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="作业闹钟看板" />
   <meta name="theme-color" content="#dff4fc" />
-  <meta name="application-version" content="1.1.0" />
+  <meta name="application-version" content="1.1.2" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
   <title>温馨提示 · 作业闹钟看板</title>
@@ -958,7 +958,7 @@
   <div class="top-bar">
     <div class="status-pill">
       <span id="modeDot" class="dot dot-blue"></span>
-      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.1.0</span>
+      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.1.2</span>
     </div>
     <div class="btn-group">
       <button id="toggleEditBtn" type="button" class="pill-btn">🔒 锁定看板</button>
@@ -1354,7 +1354,7 @@
       }
 
       const STORAGE_KEY = 'homework_clock_board_v2';
-      const APP_VERSION = '1.1.0';
+      const APP_VERSION = '1.1.2';
       const ALARM_GRACE_MS = 5 * 60 * 1000;
       const DEFAULT_IMAGE = document.getElementById('boardImage').src;
       const DEFAULT_OVERTIME_IMAGE = "./assets/default-overtime.jpg";
@@ -1400,6 +1400,10 @@
       function localDateKey(date) {
         const d = date || new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      function pad2(value) {
+        return String(value).padStart(2, '0');
       }
 
       function loadState() {
@@ -1703,7 +1707,13 @@
               const canvas = document.createElement('canvas');
               canvas.width = w;
               canvas.height = h;
-              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              const context2d = canvas.getContext('2d');
+              if (!context2d) {
+                showToast('当前浏览器无法处理这张图片');
+                inputEl.value = '';
+                return;
+              }
+              context2d.drawImage(img, 0, 0, w, h);
               const previousValue = state[targetKey];
               state[targetKey] = canvas.toDataURL('image/jpeg', 0.8);
               if (!saveState()) {
@@ -1716,7 +1726,15 @@
               photoModal.classList.add('hidden');
               showToast(msg);
             };
+            img.onerror = function () {
+              inputEl.value = '';
+              showToast('图片格式无法识别，请换一张图片');
+            };
             img.src = ev.target.result;
+          };
+          reader.onerror = function () {
+            inputEl.value = '';
+            showToast('图片读取失败，请重新选择');
           };
           reader.readAsDataURL(file);
           inputEl.value = '';
@@ -1848,7 +1866,9 @@
           state.focusDate = today;
           state.focusSeconds = 0;
           saveState();
+          return true;
         }
+        return false;
       }
 
       function formatFocusShort(sec) {
@@ -2058,6 +2078,7 @@
       function tick() {
         const now = new Date();
         if (tasksUiReady && ensureTodayTasks()) renderTasksAndStars();
+        if (ensureTodayFocus()) renderFocusUI();
         let focusSecondsAdded = 0;
         if (pomoRunning) {
           const nextRemain = Math.max(0, Math.ceil((pomoEndAt - Date.now()) / 1000));
@@ -2392,6 +2413,7 @@
               throw new Error('invalid backup');
             }
             const restored = payload.state;
+            const previousState = state;
             state = {
               ...DEFAULT_STATE,
               ...restored,
@@ -2401,7 +2423,10 @@
                 : [false, false, false]
             };
             if (!state.taskDate) state.taskDate = getTodayKey();
-            if (!saveState()) throw new Error('storage failed');
+            if (!saveState()) {
+              state = previousState;
+              throw new Error('storage failed');
+            }
             showToast('备份已恢复，正在重新载入');
             setTimeout(() => location.reload(), 700);
           } catch (error) {
@@ -2425,6 +2450,18 @@
       document.getElementById('confirmResetBtn').addEventListener('click', () => {
         stopAlarm();
         state = { ...DEFAULT_STATE, texts: {}, tasksDone: [false, false, false], taskDate: getTodayKey(), focusDate: getTodayKey() };
+        disableWakeLock();
+        pomoRunning = false;
+        pomoTotalSec = 25 * 60;
+        pomoRemainSec = pomoTotalSec;
+        pomoEndAt = 0;
+        swRunning = false;
+        swElapsedSec = 0;
+        swBaseSec = 0;
+        swStartedAt = 0;
+        clockStyle = 'digital';
+        pomoStartBtn.textContent = '▶ 开始';
+        swStartBtn.textContent = '▶ 开始';
         try {
           localStorage.removeItem(STORAGE_KEY);
           localStorage.removeItem('homework_clock_board_v1');
@@ -2438,6 +2475,7 @@
         renderAlarmUI();
         renderFocusUI();
         renderTasksAndStars();
+        setLcdMode('clock');
         updatePatienceBar(new Date());
         resetModal.classList.add('hidden');
         showToast('已恢复默认看板内容');
