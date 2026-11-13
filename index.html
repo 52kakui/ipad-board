@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="作业闹钟看板" />
   <meta name="theme-color" content="#dff4fc" />
-  <meta name="application-version" content="1.1.2" />
+  <meta name="application-version" content="1.2.0" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
   <title>温馨提示 · 作业闹钟看板</title>
@@ -137,6 +137,7 @@
     .pill-btn.rose { color: #e11d48; border-color: #fecdd3; }
     .pill-btn.rose:hover { background: #fff1f2; }
     .pill-btn.active-wake { background: #fef3c7; border-color: #f59e0b; color: #b45309; }
+    .pill-btn.monitoring { background: #dcfce7; border-color: #22c55e; color: #166534; }
 
     /* Outer metallic gold frame */
     .board-frame {
@@ -895,6 +896,59 @@
     }
     .modal-card h2 { margin: 0 0 12px; font-size: 18px; font-weight: 900; color: #1e293b; }
 
+    .posture-camera-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
+      background: #0f172a;
+      aspect-ratio: 4 / 3;
+      margin: 10px 0;
+    }
+    .posture-camera-wrap video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    .posture-camera-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      padding: 18px;
+    }
+    .posture-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 9px 11px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .posture-status-dot {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+    .posture-status.active .posture-status-dot { background: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15); }
+    .posture-status.warning .posture-status-dot { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16); }
+    .posture-status.error .posture-status-dot { background: #ef4444; }
+    .posture-alert-banner { background: #c2410c; z-index: 52; }
+    .posture-privacy-note { font-size: 11px; color: #64748b; line-height: 1.5; margin: 8px 0 0; }
+
     .field-row {
       display: flex;
       align-items: center;
@@ -958,11 +1012,12 @@
   <div class="top-bar">
     <div class="status-pill">
       <span id="modeDot" class="dot dot-blue"></span>
-      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.1.2</span>
+      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.2.0</span>
     </div>
     <div class="btn-group">
       <button id="toggleEditBtn" type="button" class="pill-btn">🔒 锁定看板</button>
       <button id="wakeLockBtn" type="button" class="pill-btn">☀️ 屏幕常亮：关</button>
+      <button id="postureBtn" type="button" class="pill-btn emerald" aria-pressed="false">📷 坐姿监督：关</button>
       <button id="pickPhotoBtn" type="button" class="pill-btn sky">🖼️ 更换图片</button>
       <button id="openPatienceBtn" type="button" class="pill-btn purple">🔋 耐心条设置</button>
       <button id="openAlarmBtn" type="button" class="pill-btn amber">⏰ 闹铃/语音</button>
@@ -1180,6 +1235,16 @@
     <button id="stopAlarmBtn" type="button" class="stop-alarm-btn">关闭响铃</button>
   </div>
 
+  <!-- Posture Warning Banner -->
+  <div id="postureAlertBanner" class="hidden ring-banner posture-alert-banner" role="alert">
+    <span style="font-size:24px;">👀</span>
+    <div style="min-width:0;">
+      <div style="font-weight:900;font-size:15px;">坐姿小提醒</div>
+      <div id="postureAlertText" style="font-size:12px;opacity:0.95;">请坐端正一些</div>
+    </div>
+    <button id="dismissPostureAlertBtn" type="button" class="stop-alarm-btn" style="color:#c2410c;">知道了</button>
+  </div>
+
   <!-- Photo Chooser Modal -->
   <div id="photoModal" class="hidden modal-overlay">
     <div class="modal-card">
@@ -1278,6 +1343,35 @@
     </div>
   </div>
 
+  <!-- Local Camera Posture Monitor -->
+  <div id="postureModal" class="hidden modal-overlay">
+    <div class="modal-card" style="max-width:430px;max-height:94vh;overflow:auto;">
+      <h2>📷 本地坐姿监督</h2>
+      <p style="font-size:12px;color:#475569;margin:0;line-height:1.55;">
+        检测离座、距离过近、明显歪头/趴桌和持续看向旁边。异常持续数秒后才会提醒，正常低头写字不会立即报警。
+      </p>
+      <div class="posture-camera-wrap">
+        <video id="postureVideo" muted playsinline autoplay></video>
+        <div id="postureCameraPlaceholder" class="posture-camera-placeholder">
+          <span style="font-size:30px;">🔒</span>
+          <span>摄像头当前关闭<br/>首次开启需要联网加载识别模型</span>
+        </div>
+      </div>
+      <div id="postureStatus" class="posture-status">
+        <span class="posture-status-dot"></span>
+        <span id="postureStatusText">尚未开启坐姿监督</span>
+      </div>
+      <p class="posture-privacy-note">🔐 画面只在本机实时分析，不上传、不录像、不保存。关闭后会立即释放摄像头。此功能只能进行辅助提醒，不能准确判断主观上是否专心。</p>
+      <div class="modal-actions">
+        <button id="recalibratePostureBtn" type="button" class="btn-secondary" disabled>重新校准</button>
+        <div style="display:flex;gap:8px;">
+          <button id="closePostureModalBtn" type="button" class="btn-secondary">关闭窗口</button>
+          <button id="togglePostureBtn" type="button" class="btn-primary">开启监督</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Star Reward Modal -->
   <div id="starModal" class="hidden modal-overlay">
     <div class="modal-card">
@@ -1354,7 +1448,7 @@
       }
 
       const STORAGE_KEY = 'homework_clock_board_v2';
-      const APP_VERSION = '1.1.2';
+      const APP_VERSION = '1.2.0';
       const ALARM_GRACE_MS = 5 * 60 * 1000;
       const DEFAULT_IMAGE = document.getElementById('boardImage').src;
       const DEFAULT_OVERTIME_IMAGE = "./assets/default-overtime.jpg";
@@ -2190,6 +2284,340 @@
       }
       stopAlarmBtn.addEventListener('click', stopAlarm);
 
+      // Front-camera posture monitor. Frames stay local and are never recorded or uploaded.
+      const MEDIAPIPE_VERSION = '0.10.21';
+      const MEDIAPIPE_MODULE_URLS = [
+        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`,
+        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/+esm`
+      ];
+      const MEDIAPIPE_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
+      const FACE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+      const postureBtn = document.getElementById('postureBtn');
+      const postureModal = document.getElementById('postureModal');
+      const postureVideo = document.getElementById('postureVideo');
+      const postureCameraPlaceholder = document.getElementById('postureCameraPlaceholder');
+      const postureStatus = document.getElementById('postureStatus');
+      const postureStatusText = document.getElementById('postureStatusText');
+      const togglePostureBtn = document.getElementById('togglePostureBtn');
+      const recalibratePostureBtn = document.getElementById('recalibratePostureBtn');
+      const postureAlertBanner = document.getElementById('postureAlertBanner');
+      const postureAlertText = document.getElementById('postureAlertText');
+
+      let postureActive = false;
+      let postureStarting = false;
+      let postureStream = null;
+      let postureLoopId = null;
+      let postureLastInferenceAt = 0;
+      let postureLastVideoTime = -1;
+      let postureLastAlertAt = 0;
+      let postureAlertTimer = null;
+      let postureModelPromise = null;
+      let faceLandmarker = null;
+      let postureBaseline = null;
+      let postureCalibrationSamples = [];
+      const postureIssueSince = { away: 0, close: 0, posture: 0, distracted: 0 };
+
+      function setPostureStatus(text, kind) {
+        postureStatusText.textContent = text;
+        postureStatus.className = `posture-status${kind ? ` ${kind}` : ''}`;
+      }
+
+      function updatePostureControls() {
+        postureBtn.classList.toggle('monitoring', postureActive);
+        postureBtn.textContent = postureStarting
+          ? '📷 坐姿监督：启动中'
+          : (postureActive ? '📷 坐姿监督：开' : '📷 坐姿监督：关');
+        postureBtn.setAttribute('aria-pressed', postureActive ? 'true' : 'false');
+        togglePostureBtn.disabled = postureStarting;
+        togglePostureBtn.textContent = postureStarting
+          ? '正在启动…'
+          : (postureActive ? '停止监督' : '开启监督');
+        togglePostureBtn.className = postureActive ? 'btn-danger' : 'btn-primary';
+        recalibratePostureBtn.disabled = !postureActive;
+        postureCameraPlaceholder.classList.toggle('hidden', postureActive);
+      }
+
+      async function importVisionModule() {
+        let lastError = null;
+        for (const moduleUrl of MEDIAPIPE_MODULE_URLS) {
+          try {
+            const imported = await import(moduleUrl);
+            const vision = imported.default || imported;
+            if (vision.FilesetResolver && vision.FaceLandmarker) return vision;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError || new Error('vision module unavailable');
+      }
+
+      function loadPostureModel() {
+        if (faceLandmarker) return Promise.resolve(faceLandmarker);
+        if (postureModelPromise) return postureModelPromise;
+        postureModelPromise = (async () => {
+          const visionModule = await importVisionModule();
+          const visionFiles = await visionModule.FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
+          const commonOptions = {
+            runningMode: 'VIDEO',
+            numFaces: 1,
+            minFaceDetectionConfidence: 0.55,
+            minFacePresenceConfidence: 0.55,
+            minTrackingConfidence: 0.5,
+            outputFaceBlendshapes: false,
+            outputFacialTransformationMatrixes: false
+          };
+          try {
+            faceLandmarker = await visionModule.FaceLandmarker.createFromOptions(visionFiles, {
+              ...commonOptions,
+              baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate: 'GPU' }
+            });
+          } catch (gpuError) {
+            faceLandmarker = await visionModule.FaceLandmarker.createFromOptions(visionFiles, {
+              ...commonOptions,
+              baseOptions: { modelAssetPath: FACE_MODEL_URL }
+            });
+          }
+          return faceLandmarker;
+        })().catch((error) => {
+          postureModelPromise = null;
+          throw error;
+        });
+        return postureModelPromise;
+      }
+
+      function resetPostureCalibration() {
+        postureBaseline = null;
+        postureCalibrationSamples = [];
+        Object.keys(postureIssueSince).forEach(key => { postureIssueSince[key] = 0; });
+        if (postureActive) setPostureStatus('正在校准，请自然坐好并看向屏幕', 'warning');
+      }
+
+      function faceMetrics(landmarks) {
+        if (!Array.isArray(landmarks) || landmarks.length < 264) return null;
+        let minX = 1;
+        let maxX = 0;
+        let minY = 1;
+        let maxY = 0;
+        landmarks.forEach(point => {
+          if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+          minX = Math.min(minX, point.x);
+          maxX = Math.max(maxX, point.x);
+          minY = Math.min(minY, point.y);
+          maxY = Math.max(maxY, point.y);
+        });
+        const leftEye = landmarks[33];
+        const rightEye = landmarks[263];
+        const nose = landmarks[1];
+        if (!leftEye || !rightEye || !nose) return null;
+        const eyeDx = rightEye.x - leftEye.x;
+        const eyeDy = rightEye.y - leftEye.y;
+        const eyeDistance = Math.max(0.001, Math.hypot(eyeDx, eyeDy));
+        const eyeMidX = (leftEye.x + rightEye.x) / 2;
+        return {
+          width: Math.max(0.001, maxX - minX),
+          centerY: (minY + maxY) / 2,
+          roll: Math.abs(Math.atan2(eyeDy, eyeDx) * 180 / Math.PI),
+          yaw: Math.abs(nose.x - eyeMidX) / eyeDistance
+        };
+      }
+
+      function postureSpeech(text) {
+        if (!('speechSynthesis' in window)) return;
+        try {
+          window.speechSynthesis.cancel();
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = 'zh-CN';
+          utter.rate = 0.95;
+          window.speechSynthesis.speak(utter);
+        } catch (e) {}
+      }
+
+      function triggerPostureWarning(message) {
+        const now = Date.now();
+        if (now - postureLastAlertAt < 30000) return false;
+        postureLastAlertAt = now;
+        postureAlertText.textContent = message;
+        postureAlertBanner.classList.remove('hidden');
+        playBeep();
+        postureSpeech(message);
+        clearTimeout(postureAlertTimer);
+        postureAlertTimer = setTimeout(() => postureAlertBanner.classList.add('hidden'), 7000);
+        return true;
+      }
+
+      function trackPostureIssue(key, active, thresholdMs, message, now) {
+        if (!active) {
+          postureIssueSince[key] = 0;
+          return false;
+        }
+        if (!postureIssueSince[key]) postureIssueSince[key] = now;
+        if (now - postureIssueSince[key] >= thresholdMs) {
+          const warned = triggerPostureWarning(message);
+          postureIssueSince[key] = now;
+          return warned;
+        }
+        return false;
+      }
+
+      function analyzePostureResult(result, now) {
+        const landmarks = result && result.faceLandmarks && result.faceLandmarks[0];
+        const metrics = faceMetrics(landmarks);
+        if (!metrics) {
+          trackPostureIssue('away', true, 8000, '没有看到你，请回到座位继续学习。', now);
+          ['close', 'posture', 'distracted'].forEach(key => { postureIssueSince[key] = 0; });
+          setPostureStatus('暂时没有看到人脸，请回到镜头前', 'warning');
+          return;
+        }
+        postureIssueSince.away = 0;
+
+        if (!postureBaseline) {
+          if (metrics.width >= 0.08 && metrics.width <= 0.58 && metrics.roll < 14) {
+            postureCalibrationSamples.push(metrics);
+          }
+          if (postureCalibrationSamples.length < 15) {
+            setPostureStatus(`正在校准，请自然坐好（${postureCalibrationSamples.length}/15）`, 'warning');
+            return;
+          }
+          const total = postureCalibrationSamples.reduce((sum, sample) => ({
+            width: sum.width + sample.width,
+            centerY: sum.centerY + sample.centerY
+          }), { width: 0, centerY: 0 });
+          postureBaseline = {
+            width: total.width / postureCalibrationSamples.length,
+            centerY: total.centerY / postureCalibrationSamples.length
+          };
+          setPostureStatus('监督中：坐姿正常', 'active');
+          showToast('坐姿基准校准完成');
+          return;
+        }
+
+        const tooClose = metrics.width > Math.max(0.42, postureBaseline.width * 1.42);
+        const visiblySlouched = metrics.roll > 19 || metrics.centerY > postureBaseline.centerY + Math.max(0.12, postureBaseline.width * 0.45);
+        const lookingAside = metrics.yaw > 0.23;
+        const closeAlerted = trackPostureIssue('close', tooClose, 6000, '离屏幕太近啦，请往后坐一点。', now);
+        const postureAlerted = trackPostureIssue('posture', visiblySlouched, 9000, '请把身体坐正，不要歪头或趴桌。', now);
+        const distractedAlerted = trackPostureIssue('distracted', lookingAside, 12000, '看向旁边有一会儿啦，请继续专心学习。', now);
+
+        if (tooClose) setPostureStatus('检测到距离较近，持续 6 秒会提醒', 'warning');
+        else if (visiblySlouched) setPostureStatus('检测到坐姿偏斜，持续 9 秒会提醒', 'warning');
+        else if (lookingAside) setPostureStatus('检测到持续看向旁边，12 秒后提醒', 'warning');
+        else setPostureStatus('监督中：坐姿正常', 'active');
+
+        if (closeAlerted || postureAlerted || distractedAlerted) {
+          setPostureStatus('已发出坐姿提醒', 'warning');
+        }
+      }
+
+      function postureDetectionLoop(timestamp) {
+        if (!postureActive) return;
+        postureLoopId = requestAnimationFrame(postureDetectionLoop);
+        if (!faceLandmarker || postureVideo.readyState < 2 || timestamp - postureLastInferenceAt < 200) return;
+        if (postureVideo.currentTime === postureLastVideoTime) return;
+        postureLastInferenceAt = timestamp;
+        postureLastVideoTime = postureVideo.currentTime;
+        try {
+          const result = faceLandmarker.detectForVideo(postureVideo, performance.now());
+          analyzePostureResult(result, Date.now());
+        } catch (error) {
+          setPostureStatus('识别暂时中断，正在自动重试', 'warning');
+        }
+      }
+
+      async function startPostureMonitoring() {
+        if (postureActive || postureStarting) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setPostureStatus('当前浏览器不支持网页摄像头', 'error');
+          showToast('请使用最新版 Safari 打开看板');
+          return;
+        }
+        postureStarting = true;
+        updatePostureControls();
+        setPostureStatus('正在申请摄像头并加载本地识别模型…', 'warning');
+        ensureAudioReady();
+        let acquiredStream = null;
+        try {
+          const streamPromise = navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 15, max: 20 }
+            },
+            audio: false
+          }).then(stream => {
+            acquiredStream = stream;
+            return stream;
+          });
+          const loaded = await Promise.all([streamPromise, loadPostureModel()]);
+          postureStream = loaded[0];
+          faceLandmarker = loaded[1];
+          postureVideo.srcObject = postureStream;
+          await postureVideo.play();
+          const videoTrack = postureStream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.addEventListener('ended', () => {
+              if (!postureActive) return;
+              stopPostureMonitoring();
+              setPostureStatus('摄像头已被系统关闭，请重新开启', 'error');
+            }, { once: true });
+          }
+          postureActive = true;
+          resetPostureCalibration();
+          postureLastInferenceAt = 0;
+          postureLastVideoTime = -1;
+          postureLoopId = requestAnimationFrame(postureDetectionLoop);
+          showToast('坐姿监督已开启，画面只在本机处理');
+        } catch (error) {
+          if (acquiredStream) acquiredStream.getTracks().forEach(track => track.stop());
+          postureStream = null;
+          postureVideo.srcObject = null;
+          const denied = error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError');
+          setPostureStatus(denied ? '没有获得摄像头权限，请在 Safari 设置中允许' : '启动失败，请检查网络后重试', 'error');
+          showToast(denied ? '请允许访问前置摄像头' : '识别模型加载失败，请联网后重试');
+        } finally {
+          postureStarting = false;
+          updatePostureControls();
+        }
+      }
+
+      function stopPostureMonitoring() {
+        postureActive = false;
+        if (postureLoopId) cancelAnimationFrame(postureLoopId);
+        postureLoopId = null;
+        if (postureStream) postureStream.getTracks().forEach(track => track.stop());
+        postureStream = null;
+        try {
+          postureVideo.pause();
+          postureVideo.srcObject = null;
+        } catch (e) {}
+        clearTimeout(postureAlertTimer);
+        postureAlertBanner.classList.add('hidden');
+        resetPostureCalibration();
+        setPostureStatus('坐姿监督已关闭，摄像头已释放');
+        updatePostureControls();
+      }
+
+      postureBtn.addEventListener('click', () => postureModal.classList.remove('hidden'));
+      document.getElementById('closePostureModalBtn').addEventListener('click', () => postureModal.classList.add('hidden'));
+      togglePostureBtn.addEventListener('click', () => {
+        if (postureActive) {
+          stopPostureMonitoring();
+          showToast('坐姿监督已关闭');
+        } else {
+          startPostureMonitoring();
+        }
+      });
+      recalibratePostureBtn.addEventListener('click', () => {
+        resetPostureCalibration();
+        showToast('请自然坐好，正在重新校准');
+      });
+      document.getElementById('dismissPostureAlertBtn').addEventListener('click', () => postureAlertBanner.classList.add('hidden'));
+      window.addEventListener('beforeunload', () => {
+        if (postureStream) postureStream.getTracks().forEach(track => track.stop());
+        try { if (faceLandmarker) faceLandmarker.close(); } catch (e) {}
+      });
+      updatePostureControls();
+
       // Alarm Modal
       const alarmModal = document.getElementById('alarmModal');
       const openAlarmBtn = document.getElementById('openAlarmBtn');
@@ -2449,6 +2877,7 @@
       document.getElementById('cancelResetBtn').addEventListener('click', () => resetModal.classList.add('hidden'));
       document.getElementById('confirmResetBtn').addEventListener('click', () => {
         stopAlarm();
+        stopPostureMonitoring();
         state = { ...DEFAULT_STATE, texts: {}, tasksDone: [false, false, false], taskDate: getTodayKey(), focusDate: getTodayKey() };
         disableWakeLock();
         pomoRunning = false;
