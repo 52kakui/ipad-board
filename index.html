@@ -1061,6 +1061,7 @@
                   <button id="pomo15Btn" type="button" class="pomo-btn">15分</button>
                   <button id="pomo25Btn" type="button" class="pomo-btn">25分</button>
                   <button id="pomo40Btn" type="button" class="pomo-btn">40分</button>
+                  <button id="pomoCustomBtn" type="button" class="pomo-btn">自定义</button>
                 </div>
               </div>
 
@@ -1285,6 +1286,19 @@
     </div>
   </div>
 
+  <!-- Custom Pomodoro Modal -->
+  <div id="pomoCustomModal" class="hidden modal-overlay">
+    <div class="modal-card">
+      <h2>⏱️ 自定义倒计时</h2>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px;">输入想要专注的分钟数（1 ~ 180 分钟）：</p>
+      <input id="pomoCustomInput" type="number" min="1" max="180" step="1" value="20" class="field-input" placeholder="例如：20" />
+      <div class="modal-actions end">
+        <button id="closePomoCustomBtn" type="button" class="btn-secondary">取消</button>
+        <button id="savePomoCustomBtn" type="button" class="btn-primary">设为倒计时</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Reset Confirm Modal -->
   <div id="resetModal" class="hidden modal-overlay">
     <div class="modal-card">
@@ -1438,12 +1452,15 @@
           state.texts[key] = el.innerHTML;
           if (key === 'subTitle') {
             const parsed = parseChineseTimeTo24h(el.textContent || '');
-            if (parsed && parsed !== state.patienceEnd) {
+            if (parsed && (parsed !== state.patienceEnd || parsed !== state.alarmTime)) {
               state.patienceEnd = parsed;
+              state.alarmTime = parsed;
+              lastTriggeredMinute = '';
               if (toMinutes(state.patienceStart) >= toMinutes(parsed)) {
                 const adj = Math.max(0, toMinutes(parsed) - 60);
                 state.patienceStart = `${String(Math.floor(adj / 60)).padStart(2, '0')}:${String(adj % 60).padStart(2, '0')}`;
               }
+              renderAlarmUI();
               updatePatienceBar(new Date());
             }
           }
@@ -1705,8 +1722,11 @@
         patienceErrorText.classList.add('hidden');
         state.patienceStart = startVal;
         state.patienceEnd = endVal;
+        state.alarmTime = endVal;
+        lastTriggeredMinute = '';
         syncSubtitleFromPatienceEnd(state.patienceEnd);
         saveState();
+        renderAlarmUI();
         updatePatienceBar(new Date());
         patienceModal.classList.add('hidden');
         showToast(`耐心时段已更新：${state.patienceStart} → ${state.patienceEnd}`);
@@ -1847,6 +1867,22 @@
       document.getElementById('pomo25Btn').addEventListener('click', () => setPomoMinutes(25));
       document.getElementById('pomo40Btn').addEventListener('click', () => setPomoMinutes(40));
 
+      const pomoCustomModal = document.getElementById('pomoCustomModal');
+      const pomoCustomInput = document.getElementById('pomoCustomInput');
+      document.getElementById('pomoCustomBtn').addEventListener('click', () => {
+        pomoCustomInput.value = Math.max(1, Math.round(pomoTotalSec / 60));
+        pomoCustomModal.classList.remove('hidden');
+        setTimeout(() => pomoCustomInput.focus(), 50);
+      });
+      document.getElementById('closePomoCustomBtn').addEventListener('click', () => {
+        pomoCustomModal.classList.add('hidden');
+      });
+      document.getElementById('savePomoCustomBtn').addEventListener('click', () => {
+        const mins = Math.max(1, Math.min(180, parseInt(pomoCustomInput.value, 10) || 25));
+        setPomoMinutes(mins);
+        pomoCustomModal.classList.add('hidden');
+      });
+
       function tick() {
         const now = new Date();
         if (pomoRunning) {
@@ -1966,15 +2002,23 @@
         speakChinese(alarmNoteInput.value.trim() || '时间到啦！');
       });
       document.getElementById('saveAlarmBtn').addEventListener('click', () => {
+        const newTime = alarmTimeInput.value || '22:00';
         state.alarmEnabled = alarmEnabledInput.checked;
         state.voiceEnabled = voiceEnabledInput.checked;
-        state.alarmTime = alarmTimeInput.value || '22:00';
+        state.alarmTime = newTime;
+        state.patienceEnd = newTime;
+        if (toMinutes(state.patienceStart) >= toMinutes(newTime)) {
+          const adj = Math.max(0, toMinutes(newTime) - 60);
+          state.patienceStart = `${String(Math.floor(adj / 60)).padStart(2, '0')}:${String(adj % 60).padStart(2, '0')}`;
+        }
+        syncSubtitleFromPatienceEnd(newTime);
         state.alarmNote = alarmNoteInput.value.trim() || '时间到啦！';
         lastTriggeredMinute = '';
         saveState();
         renderAlarmUI();
+        updatePatienceBar(new Date());
         alarmModal.classList.add('hidden');
-        showToast(state.alarmEnabled ? `已开启闹铃：${state.alarmTime}` : '已关闭定点闹铃');
+        showToast(state.alarmEnabled ? `已开启闹铃并同步：${state.alarmTime}` : `闹铃时间已同步为 ${state.alarmTime}`);
       });
 
       // Temperature Modal

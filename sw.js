@@ -1,4 +1,4 @@
-const CACHE_NAME = 'homework-clock-pwa-v6';
+const CACHE_NAME = 'homework-clock-pwa-v8';
 const ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
