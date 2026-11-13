@@ -1,4 +1,4 @@
-const CACHE_NAME = 'homework-clock-pwa-v120';
+const CACHE_NAME = 'homework-clock-pwa-v121';
 const ASSETS = [
   './',
   './index.html',

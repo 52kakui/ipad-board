@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="作业闹钟看板" />
   <meta name="theme-color" content="#dff4fc" />
-  <meta name="application-version" content="1.2.0" />
+  <meta name="application-version" content="1.2.1" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
   <title>温馨提示 · 作业闹钟看板</title>
@@ -1012,7 +1012,7 @@
   <div class="top-bar">
     <div class="status-pill">
       <span id="modeDot" class="dot dot-blue"></span>
-      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.2.0</span>
+      <span id="modeLabel">编辑模式（点击文字即可修改）</span><span style="opacity:.5;font-size:10px;">v1.2.1</span>
     </div>
     <div class="btn-group">
       <button id="toggleEditBtn" type="button" class="pill-btn">🔒 锁定看板</button>
@@ -1361,9 +1361,13 @@
         <span class="posture-status-dot"></span>
         <span id="postureStatusText">尚未开启坐姿监督</span>
       </div>
+      <p id="postureVoiceStatus" style="font-size:11px;color:#64748b;margin:8px 0 0;line-height:1.4;">🔊 语音状态：尚未测试</p>
       <p class="posture-privacy-note">🔐 画面只在本机实时分析，不上传、不录像、不保存。关闭后会立即释放摄像头。此功能只能进行辅助提醒，不能准确判断主观上是否专心。</p>
       <div class="modal-actions">
-        <button id="recalibratePostureBtn" type="button" class="btn-secondary" disabled>重新校准</button>
+        <div style="display:flex;gap:6px;">
+          <button id="testPostureSpeechBtn" type="button" class="btn-amber">🔊 试听语音</button>
+          <button id="recalibratePostureBtn" type="button" class="btn-secondary" disabled>重新校准</button>
+        </div>
         <div style="display:flex;gap:8px;">
           <button id="closePostureModalBtn" type="button" class="btn-secondary">关闭窗口</button>
           <button id="togglePostureBtn" type="button" class="btn-primary">开启监督</button>
@@ -1448,7 +1452,7 @@
       }
 
       const STORAGE_KEY = 'homework_clock_board_v2';
-      const APP_VERSION = '1.2.0';
+      const APP_VERSION = '1.2.1';
       const ALARM_GRACE_MS = 5 * 60 * 1000;
       const DEFAULT_IMAGE = document.getElementById('boardImage').src;
       const DEFAULT_OVERTIME_IMAGE = "./assets/default-overtime.jpg";
@@ -2298,6 +2302,7 @@
       const postureCameraPlaceholder = document.getElementById('postureCameraPlaceholder');
       const postureStatus = document.getElementById('postureStatus');
       const postureStatusText = document.getElementById('postureStatusText');
+      const postureVoiceStatus = document.getElementById('postureVoiceStatus');
       const togglePostureBtn = document.getElementById('togglePostureBtn');
       const recalibratePostureBtn = document.getElementById('recalibratePostureBtn');
       const postureAlertBanner = document.getElementById('postureAlertBanner');
@@ -2315,7 +2320,34 @@
       let faceLandmarker = null;
       let postureBaseline = null;
       let postureCalibrationSamples = [];
+      let postureVoice = null;
+      const activePostureUtterances = new Set();
       const postureIssueSince = { away: 0, close: 0, posture: 0, distracted: 0 };
+
+      function refreshPostureVoice() {
+        if (!('speechSynthesis' in window) || typeof window.speechSynthesis.getVoices !== 'function') return null;
+        const voices = window.speechSynthesis.getVoices() || [];
+        const preferredLanguages = ['zh-CN', 'zh-Hans-CN', 'zh-Hans', 'zh-TW', 'zh-HK'];
+        postureVoice = null;
+        for (const language of preferredLanguages) {
+          postureVoice = voices.find(voice => (voice.lang || '').toLowerCase() === language.toLowerCase());
+          if (postureVoice) break;
+        }
+        if (!postureVoice) {
+          postureVoice = voices.find(voice => (voice.lang || '').toLowerCase().startsWith('zh')) || null;
+        }
+        if (postureVoice && postureVoiceStatus.textContent.includes('尚未测试')) {
+          postureVoiceStatus.textContent = `🔊 语音状态：已找到中文声音（${postureVoice.name || postureVoice.lang}）`;
+        }
+        return postureVoice;
+      }
+
+      if ('speechSynthesis' in window) {
+        refreshPostureVoice();
+        if (typeof window.speechSynthesis.addEventListener === 'function') {
+          window.speechSynthesis.addEventListener('voiceschanged', refreshPostureVoice);
+        }
+      }
 
       function setPostureStatus(text, kind) {
         postureStatusText.textContent = text;
@@ -2421,15 +2453,43 @@
         };
       }
 
-      function postureSpeech(text) {
-        if (!('speechSynthesis' in window)) return;
+      function postureSpeech(text, options) {
+        const opts = options || {};
+        if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+          postureVoiceStatus.textContent = '🔇 语音状态：当前浏览器不支持中文语音';
+          return false;
+        }
         try {
-          window.speechSynthesis.cancel();
+          const synth = window.speechSynthesis;
+          const selectedVoice = postureVoice || refreshPostureVoice();
           const utter = new SpeechSynthesisUtterance(text);
           utter.lang = 'zh-CN';
           utter.rate = 0.95;
-          window.speechSynthesis.speak(utter);
-        } catch (e) {}
+          utter.pitch = 1;
+          utter.volume = 1;
+          if (selectedVoice) utter.voice = selectedVoice;
+          activePostureUtterances.add(utter);
+          utter.onstart = () => {
+            postureVoiceStatus.textContent = '🔊 语音状态：中文语音播放正常';
+          };
+          utter.onend = () => {
+            activePostureUtterances.delete(utter);
+          };
+          utter.onerror = event => {
+            activePostureUtterances.delete(utter);
+            const reason = event && event.error ? event.error : 'unknown';
+            postureVoiceStatus.textContent = `🔇 语音状态：播放失败（${reason}）`;
+            if (!opts.quiet) showToast('中文语音播放失败，已保留提示音提醒');
+          };
+          if (synth.paused && typeof synth.resume === 'function') synth.resume();
+          // Do not call cancel() immediately before speak(): older iPad Safari may cancel the new utterance too.
+          synth.speak(utter);
+          return true;
+        } catch (error) {
+          postureVoiceStatus.textContent = '🔇 语音状态：初始化失败';
+          if (!opts.quiet) showToast('中文语音初始化失败，已保留提示音提醒');
+          return false;
+        }
       }
 
       function triggerPostureWarning(message) {
@@ -2530,6 +2590,8 @@
           showToast('请使用最新版 Safari 打开看板');
           return;
         }
+        // Run speech synchronously inside the user's tap so iPad Safari authorizes later automatic reminders.
+        postureSpeech('坐姿语音提醒已开启');
         postureStarting = true;
         updatePostureControls();
         setPostureStatus('正在申请摄像头并加载本地识别模型…', 'warning');
@@ -2599,6 +2661,10 @@
 
       postureBtn.addEventListener('click', () => postureModal.classList.remove('hidden'));
       document.getElementById('closePostureModalBtn').addEventListener('click', () => postureModal.classList.add('hidden'));
+      document.getElementById('testPostureSpeechBtn').addEventListener('click', () => {
+        playBeep();
+        postureSpeech('坐姿语音提醒测试正常，请保持正确坐姿，认真学习。');
+      });
       togglePostureBtn.addEventListener('click', () => {
         if (postureActive) {
           stopPostureMonitoring();
